@@ -1,5 +1,5 @@
 # audio2summary
-Uses OpenAI's whisper-1 model and gpt-3.5-turbo / gpt-4 to summarise audio recordings of meetings. If audio files are too big (over 25 MB) it automatically partitions them into smaller pieces.
+Uses OpenAI's whisper-1 model and gpt-3.5-turbo / gpt-4 to summarise audio recordings of meetings. If audio files are too big (over 25 MB) it automatically partitions them into smaller pieces. It will cache both transcriptions as well as the summary of all the pieces, since both of those take a long time to run and can be costly.
 
 When done it enters chat mode where you can ask the assistant about the contents of the meeting.
 
