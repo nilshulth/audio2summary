@@ -1,0 +1,5 @@
+secret_variables.py
+__pycache__
+.DS_Store
+cache
+audio
