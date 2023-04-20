@@ -5,6 +5,7 @@ import io
 import hashlib
 import os
 import shutil
+import sys
 
 from secret_variables import openai_api_key
 
@@ -45,11 +46,14 @@ def transcribe_audio_segments(segments, file_extension):
 
     for i, segment in enumerate(segments):
         print(f"Transcribing segment {i + 1} of {total_segments}...")
+        sys.stdout.flush()
 
         audio_file = io.BytesIO()
         audio_file.name = f"segment_{i + 1}.{file_extension}"
         segment.export(audio_file, format=file_extension)
         audio_file.seek(0)
+        print(f"Exported segment {i + 1} to {audio_file.name}.")
+        sys.stdout.flush()
 
         if file_extension == "wav":
             transcript = openai.Audio.transcribe("whisper-1", audio_file, format="wav").text
@@ -57,8 +61,11 @@ def transcribe_audio_segments(segments, file_extension):
             transcript = openai.Audio.transcribe("whisper-1", audio_file).text
 
         transcriptions += transcript + ' '
+        print(f"Transcription for segment {i + 1} of {total_segments} complete.")
+        sys.stdout.flush()
 
     print("Transcription complete.")
+    sys.stdout.flush()
     return transcriptions
 
 
@@ -99,6 +106,9 @@ def summarize_text(chunks, max_size_per_message=4096):
     total_chunks = len(chunks)
 
     for i, chunk in enumerate(chunks):
+        print(f"Summarizing chunk {i + 1} out of {total_chunks}, characters: {len(chunk)}")
+        sys.stdout.flush()
+
         messages = [{"role": "user", "content": chunk}]
         messages.append({"role": "user", "content": command})
 
@@ -110,7 +120,9 @@ def summarize_text(chunks, max_size_per_message=4096):
         summary = output.choices[0].message.content
         summaries.append(summary.strip())
 
-        print(f"Summarizing chunk {i + 1} out of {total_chunks}, characters: {len(summary)}\n")
+        print(f"Summary for chunk {i + 1} of {total_chunks} complete: {len(summary)} characters")
+        sys.stdout.flush()
+
     return " ".join(summaries)
 
 
@@ -137,69 +149,78 @@ def query_mode(summary):
 
         answer = response.choices[0].message.content
         print("\nAnswer:", answer.strip())
+        sys.stdout.flush()
 
 
-    def calculate_audio_file_hash(file_path):
-        """Calculates the SHA-256 hash of an audio file.
+def calculate_audio_file_hash(file_path):
+    """Calculates the SHA-256 hash of an audio file.
 
-        Args:
-            file_path (str): Path to the audio file.
+    Args:
+        file_path (str): Path to the audio file.
 
-        Returns:
-            str: SHA-256 hash of the audio file.
-        """
-        sha256_hash = hashlib.sha256()
-        with open(file_path, 'rb') as f:
-            for byte_block in iter(lambda: f.read(4096), b''):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
-
-
-    def main(audio_file_path, clear_cache=False):
-        """Main function that processes an audio file.
-
-        Args:
-            audio_file_path (str): Path to the audio file to process.
-            clear_cache (bool, optional): Whether or not to clear the cache before processing. Defaults to False.
-        """
-        cache_dir = 'cache'
-        if clear_cache and os.path.exists(cache_dir):
-            shutil.rmtree(cache_dir)
-            return
-
-        os.makedirs(cache_dir, exist_ok=True)
-        file_hash = calculate_audio_file_hash(audio_file_path)
-        cached_transcript_file = f"{cache_dir}/{file_hash}_transcript.txt"
-        cached_summary_file = f"{cache_dir}/{file_hash}_summary.txt"
-
-        if os.path.exists(cached_transcript_file):
-            with open(cached_transcript_file, 'r') as f:
-                transcript = f.read()
-            print("Using cached transcription.")
-        else:
-            file_extension = audio_file_path.split('.')[-1].lower()
-            segments = split_audio(audio_file_path)
-            transcript = transcribe_audio_segments(segments, file_extension)
-            with open(cached_transcript_file, 'w') as f:
-                f.write(transcript)
-
-        if os.path.exists(cached_summary_file):
-            with open(cached_summary_file, 'r') as f:
-                summary = f.read()
-            print("Using cached summary.")
-        else:
-            chunks = split_transcript(transcript)
-            summary = summarize_text(chunks)
-            with open(cached_summary_file, 'w') as f:
-                f.write(summary)
-
-        query_mode(summary)
+    Returns:
+        str: SHA-256 hash of the audio file.
+    """
+    sha256_hash = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        for byte_block in iter(lambda: f.read(4096), b''):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
 
 
-    if __name__ == '__main__':
-        parser = argparse.ArgumentParser(description="Process an audio file.")
-        parser.add_argument("audio_file", help="The path to the audio file.")
-        parser.add_argument("--clear-cache", action="store_true", help="Clear the cache and exit.")
-        args = parser.parse_args()
+def main(audio_file_path, clear_cache=False, debug=False):
+    """Main function that processes an audio file.
 
-        main(args.audio_file, clear_cache=args.clear_cache)
+    Args:
+        audio_file_path (str): Path to the audio file to process.
+        clear_cache (bool, optional): Whether or not to clear the cache before processing. Defaults to False.
+        debug (bool, optional): Whether or not to print debug statements. Defaults to False.
+    """
+    if debug:
+        openai.api_request_debug = True
+        sys.tracebacklimit = None
+
+    cache_dir = 'cache'
+    if clear_cache and os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
+        return
+
+    os.makedirs(cache_dir, exist_ok=True)
+    file_hash = calculate_audio_file_hash(audio_file_path)
+    cached_transcript_file = f"{cache_dir}/{file_hash}_transcript.txt"
+    cached_summary_file = f"{cache_dir}/{file_hash}_summary.txt"
+
+    if os.path.exists(cached_transcript_file):
+        with open(cached_transcript_file, 'r') as f:
+            transcript = f.read()
+        print("Using cached transcription.")
+        sys.stdout.flush()
+    else:
+        file_extension = audio_file_path.split('.')[-1].lower()
+        segments = split_audio(audio_file_path)
+        transcript = transcribe_audio_segments(segments, file_extension)
+        with open(cached_transcript_file, 'w') as f:
+            f.write(transcript)
+
+    if os.path.exists(cached_summary_file):
+        with open(cached_summary_file, 'r') as f:
+            summary = f.read()
+        print("Using cached summary.")
+        sys.stdout.flush()
+    else:
+        chunks = split_transcript(transcript)
+        summary = summarize_text(chunks)
+        with open(cached_summary_file, 'w') as f:
+            f.write(summary)
+
+    query_mode(summary)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Process an audio file.")
+    parser.add_argument("audio_file", help="The path to the audio file.")
+    parser.add_argument("--clear-cache", action="store_true", help="Clear the cache and exit.")
+    parser.add_argument("--debug", action="store_true", help="Print debug statements.")
+    args = parser.parse_args()
+
+    main(args.audio_file, clear_cache=args.clear_cache, debug=args.debug)
